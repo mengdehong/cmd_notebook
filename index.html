@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>命令速查面板 · Command Wall</title>
+    <link rel="stylesheet" href="/src/styles.css" />
+    <script type="module" src="/src/main.ts" defer></script>
+  </head>
+
+  <body>
+    <div class="app" id="app">
+      <div class="toolbar">
+        <button id="managePages" title="页面管理">📑 页面</button>
+        <button id="addBlock">➕ 新建区块</button>
+        <button id="toggleFocus" title="单区块视图">🔍 单块视图</button>
+        <button id="importFile" title="导入命令库">📂 导入</button>
+        <button id="exportFile" title="导出到文件">💾 导出</button>
+      </div>
+      <div class="page-dropdown" id="pageDropdown">
+        <div class="page-list" id="pageList"></div>
+      </div>
+      <div class="grid" id="grid"></div>
+    </div>
+
+    <div class="context" id="context">
+      <div class="menu" id="menu">
+        <button data-action="rename-block">重命名区块</button>
+        <button data-action="add-cmd">添加命令</button>
+        <button data-action="delete-block" class="danger">删除区块</button>
+        <button data-action="delete-cmd" class="danger hidden">删除该命令</button>
+      </div>
+    </div>
+
+    <div class="context" id="pageContext">
+      <div class="menu" id="pageMenu">
+        <button data-action="rename-page">重命名页面</button>
+        <button data-action="delete-page" class="danger">删除页面</button>
+      </div>
+    </div>
+
+    <div class="modal" id="dialogOverlay" aria-hidden="true">
+      <div class="modal-backdrop" data-modal-dismiss></div>
+      <div class="modal-panel" role="dialog" aria-modal="true">
+        <h2 class="modal-title" id="dialogTitle"></h2>
+        <p class="modal-message hidden" id="dialogMessage"></p>
+        <div class="modal-body" id="dialogBody"></div>
+        <div class="modal-actions">
+          <button id="dialogCancel">取消</button>
+          <button id="dialogConfirm" class="primary">确定</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="toast" id="toast">已复制到剪贴板</div>
+  </body>
+</html>
