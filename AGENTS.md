@@ -16,3 +16,13 @@ Use 2-space indentation in TypeScript and keep modules default-exported only whe
 
 ## Security & Configuration Tips
 Never commit secrets; load environment-specific values via Tauri’s secure APIs instead of embedding them in `tauri.conf.json`. When touching `capabilities/` or window permissions, document why the change is needed and validate the sandbox still launches with `npm run tauri dev`.
+
+## Git Workflow & Version Management
+- **Local CI check before push**: Always run `npx tsc --noEmit` and `cargo fmt --all -- --check` (from `src-tauri/`) before pushing to ensure CI passes.
+- **Trivial changes**: For minor fixes (typos, formatting, version bumps), use `git commit --amend --no-edit` to append to the previous commit instead of creating a new one.
+- **Version tagging**: When creating a new version tag:
+  1. Update version in both `package.json` and `src-tauri/tauri.conf.json`
+  2. Run local CI checks
+  3. Commit version bump
+  4. Create annotated tag: `git tag -a vX.Y.Z -m "vX.Y.Z\n\n<changelog>"`
+  5. Push commits and tag: `git push && git push origin vX.Y.Z`
