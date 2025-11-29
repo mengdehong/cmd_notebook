@@ -170,6 +170,14 @@ export function render(): void {
         textDiv.textContent = cmd.text;
 
         row.append(icon, textDiv);
+
+        if (cmd.note) {
+          const noteDiv = document.createElement("div");
+          noteDiv.className = "cmd-note";
+          noteDiv.textContent = cmd.note;
+          row.appendChild(noteDiv);
+        }
+
         body.appendChild(row);
       }
     }

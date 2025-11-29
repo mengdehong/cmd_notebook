@@ -283,3 +283,27 @@ export function updateBlockWidth(blockId: string, width: number): boolean {
   });
   return changed;
 }
+
+export function updateCommandNote(
+  blockId: string,
+  cmdId: string,
+  note: string | undefined
+): boolean {
+  const state = getState();
+  const page = findPageContainingBlock(state, blockId);
+  if (!page) return false;
+  const block = page.blocks.find((item) => item.id === blockId);
+  if (!block) return false;
+  const command = block.cmds.find((cmd) => cmd.id === cmdId);
+  if (!command) return false;
+  updateState((draft) => {
+    const targetPage = draft.pages.find((item) => item.id === page.id);
+    if (!targetPage) return;
+    const targetBlock = targetPage.blocks.find((item) => item.id === blockId);
+    if (!targetBlock) return;
+    const targetCmd = targetBlock.cmds.find((cmd) => cmd.id === cmdId);
+    if (!targetCmd) return;
+    targetCmd.note = note;
+  });
+  return true;
+}

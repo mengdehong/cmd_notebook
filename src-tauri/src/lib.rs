@@ -105,7 +105,10 @@ async fn switch_data_dir(
     }
 
     // 更新配置
-    eprintln!("[switch_data_dir] updating config to new_dir: {:?}", new_dir);
+    eprintln!(
+        "[switch_data_dir] updating config to new_dir: {:?}",
+        new_dir
+    );
     let mut config = load_config(&app)?;
     config.data_dir = new_dir.clone();
     save_config(&app, &config)?;

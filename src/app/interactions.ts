@@ -13,6 +13,7 @@ import {
   setActivePageById,
   updateCommand,
   updateBlockWidth,
+  updateCommandNote,
 } from "./actions";
 import { render } from "./render";
 import {
@@ -56,6 +57,9 @@ const deleteBlockBtn = blockContextMenu?.querySelector<HTMLButtonElement>(
 );
 const deleteCmdBtn = blockContextMenu?.querySelector<HTMLButtonElement>(
   '[data-action="delete-cmd"]'
+);
+const editNoteBtn = blockContextMenu?.querySelector<HTMLButtonElement>(
+  '[data-action="edit-note"]'
 );
 
 const pageContextOverlay = document.getElementById(
@@ -404,6 +408,21 @@ async function handleBlockContextAction(action: string): Promise<void> {
           showToast("命令已删除");
         }
       }
+    } else if (action === "edit-note") {
+      const command = findCommand(blockId, cmdId);
+      const original = command?.note ?? "";
+      const note = await promptDialog({
+        title: "编辑注释",
+        placeholder: "输入注释内容（可留空）",
+        defaultValue: original,
+        multiline: true,
+        confirmLabel: "保存",
+      });
+      if (note !== null) {
+        const trimmed = note.trim();
+        updateCommandNote(blockId, cmdId, trimmed || undefined);
+        showToast(trimmed ? "注释已保存" : "注释已清除");
+      }
     }
   }
 }
@@ -457,17 +476,19 @@ function toggleBlockContextMenu(
   y: number
 ): void {
   if (!blockContextOverlay || !blockContextMenu) return;
-  if (renameBlockBtn && addCmdBtn && deleteBlockBtn && deleteCmdBtn) {
+  if (renameBlockBtn && addCmdBtn && deleteBlockBtn && deleteCmdBtn && editNoteBtn) {
     if (type === "command") {
       renameBlockBtn.classList.add("hidden");
       addCmdBtn.classList.add("hidden");
       deleteBlockBtn.classList.add("hidden");
       deleteCmdBtn.classList.remove("hidden");
+      editNoteBtn.classList.remove("hidden");
     } else {
       renameBlockBtn.classList.remove("hidden");
       addCmdBtn.classList.remove("hidden");
       deleteBlockBtn.classList.remove("hidden");
       deleteCmdBtn.classList.add("hidden");
+      editNoteBtn.classList.add("hidden");
     }
   }
   blockContextOverlay.style.display = "block";

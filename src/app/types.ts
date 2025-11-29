@@ -1,6 +1,7 @@
 export interface CommandItem {
   id: string;
   text: string;
+  note?: string;
 }
 
 export interface CommandBlock {
@@ -93,7 +94,8 @@ function sanitizeBlocks(input: unknown): CommandBlock[] {
       const cmdRecord = cmdRaw as UnknownRecord;
       const cmdId = coerceString(cmdRecord.id, uid()) || uid();
       const text = coerceString(cmdRecord.text, "");
-      cmds.push({ id: cmdId, text });
+      const note = typeof cmdRecord.note === "string" ? cmdRecord.note : undefined;
+      cmds.push({ id: cmdId, text, note });
     }
     blocks.push({ id, title, cmds, width });
   }

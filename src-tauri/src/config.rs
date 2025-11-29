@@ -14,7 +14,7 @@ pub struct AppConfig {
     /// 数据目录路径（用户可自定义）
     pub data_dir: PathBuf,
     /// 备份保留数量
-    #[serde(default = "default_backup_count")]  
+    #[serde(default = "default_backup_count")]
     pub backup_count: usize,
 }
 
@@ -91,10 +91,10 @@ pub fn load_config(app: &AppHandle) -> Result<AppConfig, String> {
     eprintln!("[config] config_path.exists(): {}", config_path.exists());
 
     if config_path.exists() {
-        let content = fs::read_to_string(&config_path)
-            .map_err(|_| "读取配置文件失败".to_string())?;
+        let content =
+            fs::read_to_string(&config_path).map_err(|_| "读取配置文件失败".to_string())?;
         eprintln!("[config] loaded content: {}", content);
-        
+
         let mut config: AppConfig =
             serde_json::from_str(&content).map_err(|_| "配置文件格式错误".to_string())?;
 
@@ -110,7 +110,10 @@ pub fn load_config(app: &AppHandle) -> Result<AppConfig, String> {
             data_dir: default_data_dir(app)?,
             backup_count: DEFAULT_BACKUP_COUNT,
         };
-        eprintln!("[config] creating new config with data_dir: {:?}", config.data_dir);
+        eprintln!(
+            "[config] creating new config with data_dir: {:?}",
+            config.data_dir
+        );
         save_config(app, &config)?;
         Ok(config)
     }
@@ -125,8 +128,7 @@ pub fn save_config(app: &AppHandle, config: &AppConfig) -> Result<(), String> {
         fs::create_dir_all(parent).map_err(|_| "无法创建配置目录".to_string())?;
     }
 
-    let content =
-        serde_json::to_string_pretty(config).map_err(|_| "配置序列化失败".to_string())?;
+    let content = serde_json::to_string_pretty(config).map_err(|_| "配置序列化失败".to_string())?;
 
     // 原子写入
     let tmp_path = config_path.with_extension("json.tmp");
