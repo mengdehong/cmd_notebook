@@ -8,6 +8,20 @@ interface PromptOptions {
   multiline?: boolean;
 }
 
+interface ConfirmOptions {
+  title: string;
+  message: string;
+  confirmLabel?: string;
+  cancelLabel?: string;
+  showCancel?: boolean;
+}
+
+interface ChoiceOptions {
+  title: string;
+  message: string;
+  choices: { label: string; value: string; primary?: boolean }[];
+}
+
 let isOpen = false;
 let resolveRef: ((value: string | null) => void) | null = null;
 
@@ -176,4 +190,150 @@ export function promptDialog(options: PromptOptions): Promise<string | null> {
   document.addEventListener("keydown", handleKeydown, true);
 
   return promise;
+}
+
+export function confirmDialog(options: ConfirmOptions): Promise<boolean> {
+  if (!ensureElements() || isOpen) {
+    return Promise.resolve(false);
+  }
+
+  overlay!.classList.add("open");
+  overlay!.setAttribute("aria-hidden", "false");
+
+  titleEl!.textContent = options.title;
+  messageEl!.textContent = options.message;
+  messageEl!.classList.remove("hidden");
+
+  bodyEl!.innerHTML = "";
+
+  confirmBtn!.textContent = options.confirmLabel ?? "确定";
+  cancelBtn!.textContent = options.cancelLabel ?? "取消";
+
+  if (options.showCancel === false) {
+    cancelBtn!.classList.add("hidden");
+  } else {
+    cancelBtn!.classList.remove("hidden");
+  }
+
+  removeListeners();
+
+  let result = false;
+
+  confirmListener = () => {
+    result = true;
+    closeDialogConfirm();
+  };
+
+  cancelListener = () => {
+    closeDialogConfirm();
+  };
+
+  backdropListener = () => {
+    closeDialogConfirm();
+  };
+
+  confirmBtn!.addEventListener("click", confirmListener, { once: true });
+  cancelBtn!.addEventListener("click", cancelListener, { once: true });
+  if (backdropEl) {
+    backdropEl.addEventListener("click", backdropListener, { once: true });
+  }
+
+  isOpen = true;
+
+  return new Promise<boolean>((resolve) => {
+    resolveRef = () => {
+      removeListeners();
+      cancelBtn!.classList.remove("hidden");
+      resolve(result);
+    };
+  });
+
+  function closeDialogConfirm(): void {
+    if (!overlay) return;
+    overlay.classList.remove("open");
+    overlay.setAttribute("aria-hidden", "true");
+    removeListeners();
+    if (resolveRef) {
+      resolveRef(null);
+    }
+    resolveRef = null;
+    isOpen = false;
+  }
+}
+
+export function choiceDialog(options: ChoiceOptions): Promise<string | null> {
+  if (!ensureElements() || isOpen) {
+    return Promise.resolve(null);
+  }
+
+  overlay!.classList.add("open");
+  overlay!.setAttribute("aria-hidden", "false");
+
+  titleEl!.textContent = options.title;
+  messageEl!.textContent = options.message;
+  messageEl!.classList.remove("hidden");
+
+  bodyEl!.innerHTML = "";
+
+  // 隐藏默认按钮
+  confirmBtn!.classList.add("hidden");
+  cancelBtn!.classList.add("hidden");
+
+  removeListeners();
+
+  let result: string | null = null;
+  const buttonListeners: { btn: HTMLButtonElement; handler: () => void }[] = [];
+
+  // 创建选项按钮
+  const btnContainer = document.createElement("div");
+  btnContainer.className = "choice-buttons";
+
+  for (const choice of options.choices) {
+    const btn = document.createElement("button");
+    btn.textContent = choice.label;
+    btn.className = choice.primary ? "primary" : "";
+    const handler = () => {
+      result = choice.value;
+      closeChoiceDialog();
+    };
+    btn.addEventListener("click", handler, { once: true });
+    buttonListeners.push({ btn, handler });
+    btnContainer.appendChild(btn);
+  }
+
+  bodyEl!.appendChild(btnContainer);
+
+  backdropListener = () => {
+    closeChoiceDialog();
+  };
+
+  if (backdropEl) {
+    backdropEl.addEventListener("click", backdropListener, { once: true });
+  }
+
+  isOpen = true;
+
+  return new Promise<string | null>((resolve) => {
+    resolveRef = () => {
+      // 清理按钮监听
+      for (const { btn, handler } of buttonListeners) {
+        btn.removeEventListener("click", handler);
+      }
+      removeListeners();
+      confirmBtn!.classList.remove("hidden");
+      cancelBtn!.classList.remove("hidden");
+      resolve(result);
+    };
+  });
+
+  function closeChoiceDialog(): void {
+    if (!overlay) return;
+    overlay.classList.remove("open");
+    overlay.setAttribute("aria-hidden", "true");
+    if (resolveRef) {
+      resolveRef(null);
+    }
+    resolveRef = null;
+    isOpen = false;
+  }
 }

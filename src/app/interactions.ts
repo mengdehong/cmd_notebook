@@ -31,6 +31,7 @@ import { showToast } from "./toast";
 import { isMacPlatform } from "./utils";
 import { normalizeState } from "./types";
 import { promptDialog } from "./dialogs";
+import { showDataDirInfo, changeDataDir, resetToDefaultDir } from "./settings";
 
 type BlockContextTarget =
   | { type: "block"; blockId: string }
@@ -81,6 +82,7 @@ export function setupInteractions(): void {
   setupKeyboardShortcuts();
   setupBlockContextMenu();
   setupPageContextMenu();
+  setupSettingsMenu();
 }
 
 function setupGrid(grid: HTMLDivElement): void {
@@ -617,6 +619,84 @@ function setupButtons(): void {
   });
 }
 
+function setupSettingsMenu(): void {
+  const settingsBtn = document.getElementById("settingsBtn") as HTMLButtonElement | null;
+  const dropdown = document.getElementById("settingsDropdown") as HTMLDivElement | null;
+
+  if (!settingsBtn || !dropdown) return;
+
+  const positionMenu = () => {
+    const rect = settingsBtn.getBoundingClientRect();
+    dropdown.style.top = `${rect.bottom + 8}px`;
+    dropdown.style.right = `${window.innerWidth - rect.right}px`;
+  };
+
+  const openMenu = () => {
+    positionMenu();
+    dropdown.classList.add("open");
+  };
+
+  // 导出关闭函数供外部调用
+  (window as unknown as { closeSettingsMenu?: () => void }).closeSettingsMenu = () => {
+    dropdown.classList.remove("open");
+  };
+
+  const closeMenu = () => {
+    dropdown.classList.remove("open");
+  };
+
+  settingsBtn.addEventListener("click", (event) => {
+    event.stopPropagation();
+    hideBlockContextMenu();
+    hidePageContextMenu();
+    if (dropdown.classList.contains("open")) {
+      closeMenu();
+    } else {
+      openMenu();
+    }
+  });
+
+  document.addEventListener("click", (event) => {
+    if (!dropdown.classList.contains("open")) return;
+    const target = event.target as Node;
+    if (target === dropdown || dropdown.contains(target) || target === settingsBtn) {
+      return;
+    }
+    closeMenu();
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && dropdown.classList.contains("open")) {
+      closeMenu();
+    }
+  });
+
+  dropdown.addEventListener("click", async (event) => {
+    const target = event.target as HTMLElement;
+    const action = target.dataset.action;
+    if (!action) return;
+    closeMenu();
+
+    if (action === "view-data-dir") {
+      await showDataDirInfo();
+    } else if (action === "change-data-dir") {
+      await changeDataDir();
+    } else if (action === "reset-data-dir") {
+      await resetToDefaultDir();
+    }
+  });
+}
+
+function isSettingsMenuOpen(): boolean {
+  const dropdown = document.getElementById("settingsDropdown");
+  return dropdown?.classList.contains("open") ?? false;
+}
+
+function closeSettingsMenu(): void {
+  const fn = (window as unknown as { closeSettingsMenu?: () => void }).closeSettingsMenu;
+  if (fn) fn();
+}
+
 function setupToolbarAutohide(): void {
   const toolbar = document.querySelector(".toolbar") as HTMLElement | null;
   if (!toolbar) return;
@@ -639,17 +719,37 @@ function setupToolbarAutohide(): void {
   };
 
   const scheduleHide = () => {
+    // 如果设置菜单打开，不隐藏工具栏
+    if (isSettingsMenuOpen()) {
+      return;
+    }
     if (hideTimer) {
       window.clearTimeout(hideTimer);
     }
     hideTimer = window.setTimeout(() => {
+      // 再次检查设置菜单状态
+      if (isSettingsMenuOpen()) {
+        return;
+      }
       visible = false;
       document.body.classList.remove("toolbar-visible");
+      // 同时关闭设置菜单
+      closeSettingsMenu();
       hideTimer = null;
     }, 80);
   };
 
   document.addEventListener("mousemove", (event) => {
+    const settingsDropdown = document.getElementById("settingsDropdown");
+    // 如果鼠标在设置菜单区域内，不隐藏
+    if (settingsDropdown && isSettingsMenuOpen()) {
+      const rect = settingsDropdown.getBoundingClientRect();
+      if (event.clientX >= rect.left && event.clientX <= rect.right &&
+          event.clientY >= rect.top && event.clientY <= rect.bottom) {
+        show();
+        return;
+      }
+    }
     if (event.clientY <= 80) {
       show();
     } else {
@@ -664,6 +764,11 @@ function setupToolbarAutohide(): void {
   toolbar.addEventListener("mouseleave", (event) => {
     const related = event.relatedTarget as Node | null;
     if (related && (related === trigger || trigger.contains(related))) return;
+    // 检查是否移动到设置菜单
+    const settingsDropdown = document.getElementById("settingsDropdown");
+    if (related && settingsDropdown && (related === settingsDropdown || settingsDropdown.contains(related))) {
+      return;
+    }
     scheduleHide();
   });
 

@@ -120,7 +120,9 @@ export type ExportResult =
   | { status: "error"; error: string };
 
 export async function exportStateToFile(raw: string): Promise<ExportResult> {
+  console.log("[export] starting export...");
   try {
+    console.log("[export] calling save dialog...");
     const destination = await save({
       defaultPath: "command-wall.json",
       filters: [
@@ -130,47 +132,38 @@ export async function exportStateToFile(raw: string): Promise<ExportResult> {
         },
       ],
     });
+    console.log("[export] save dialog result:", destination);
     if (!destination) {
+      console.log("[export] user cancelled");
       return { status: "cancelled" };
     }
+    console.log("[export] writing file to:", destination);
     await writeTextFile(destination, raw);
+    console.log("[export] file written successfully");
     return { status: "success", path: destination };
   } catch (pluginError) {
-    console.warn("tauri plugin dialog/fs export failed", pluginError);
-    const fallback = await fallbackExport(raw);
-    if (fallback) return fallback;
-    const message =
-      pluginError instanceof Error
-        ? pluginError.message
-        : "unknown export failure";
-    return { status: "error", error: message };
-  }
-}
-
-async function fallbackExport(raw: string): Promise<ExportResult | null> {
-  if (typeof window === "undefined") return null;
-  const win = window as FileSaveDialog;
-  if (!win.showSaveFilePicker) return null;
-  try {
-    const handle = await win.showSaveFilePicker({
-      suggestedName: "command-wall.json",
-      types: [
-        {
-          description: "JSON",
-          accept: { "application/json": [".json"] },
-        },
-      ],
-    });
-    const writable = await handle.createWritable();
-    await writable.write(raw);
-    await writable.close();
-    return { status: "success", path: handle.name };
-  } catch (error) {
-    if (isAbortError(error)) {
+    console.error("[export] error:", pluginError);
+    console.error("[export] error type:", typeof pluginError);
+    console.error("[export] error string:", String(pluginError));
+    
+    // 检查是否是用户取消操作
+    const errorStr = String(pluginError);
+    if (errorStr.includes("cancel") || errorStr.includes("Cancel") || 
+        errorStr.includes("aborted") || errorStr.includes("Aborted")) {
       return { status: "cancelled" };
     }
-    console.warn("fallback export failed", error);
-    const message = error instanceof Error ? error.message : "导出失败";
+    
+    // 提取友好的错误信息
+    let message = "导出失败";
+    if (pluginError instanceof Error) {
+      if (pluginError.message.includes("permission")) {
+        message = "没有写入权限";
+      } else if (pluginError.message.includes("space")) {
+        message = "磁盘空间不足";
+      } else {
+        message = pluginError.message;
+      }
+    }
     return { status: "error", error: message };
   }
 }

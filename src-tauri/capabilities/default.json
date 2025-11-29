@@ -6,8 +6,12 @@
   "permissions": [
     "core:default",
     "clipboard:default",
+    "clipboard:allow-write-text",
+    "clipboard:allow-read-text",
     "dialog:default",
     "fs:default",
+    "fs:allow-write-text-file",
+    "fs:allow-read-text-file",
     "opener:default"
   ]
 }

@@ -16,6 +16,7 @@
         <button id="toggleFocus" title="单区块视图">🔍 单块视图</button>
         <button id="importFile" title="导入命令库">📂 导入</button>
         <button id="exportFile" title="导出到文件">💾 导出</button>
+        <button id="settingsBtn" title="设置">⚙️ 设置</button>
       </div>
       <div class="page-dropdown" id="pageDropdown">
         <div class="page-list" id="pageList"></div>
@@ -49,6 +50,14 @@
           <button id="dialogCancel">取消</button>
           <button id="dialogConfirm" class="primary">确定</button>
         </div>
+      </div>
+    </div>
+
+    <div class="settings-dropdown" id="settingsDropdown">
+      <div class="settings-menu">
+        <button id="viewDataDir" data-action="view-data-dir">📂 查看数据目录</button>
+        <button id="changeDataDir" data-action="change-data-dir">📁 更改数据目录</button>
+        <button id="resetDataDir" data-action="reset-data-dir">🔄 重置为默认</button>
       </div>
     </div>
 

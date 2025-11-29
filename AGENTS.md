@@ -14,11 +14,5 @@ The Vite-based UI lives in `src/`, with `main.ts` wiring browser events to Tauri
 ## Coding Style & Naming Conventions
 Use 2-space indentation in TypeScript and keep modules default-exported only when a component is standalone; prefer camelCase for variables, PascalCase for components, and kebab-case for asset filenames. Rust code should follow `rustfmt` defaults (4 spaces, `snake_case` functions). Avoid mixing UI logic and command invocations: place DOM helpers in `src/main.ts`, and expose new Tauri commands via `#[tauri::command]` in `src-tauri/src/lib.rs`.
 
-## Testing Guidelines
-Automated tests are not yet configured. When adding Rust logic, create unit tests in `src-tauri/src` and run them with `cargo test`. For frontend utilities, add lightweight assertions with your preferred TS testing framework and document the command alongside introducing it. Aim for meaningful coverage on new modules before opening a PR.
-
-## Commit & Pull Request Guidelines
-There is no established commit history yet; start with Conventional Commit-style messages (e.g., `feat: add notebook command palette`) written in the imperative. Each PR should summarize intent, link any tracked issues, and include reproduction or verification steps (`npm run tauri dev`, screenshots for UI changes, etc.). Flag migrations or configuration tweaks in the description so reviewers can re-run the appropriate setup.
-
 ## Security & Configuration Tips
 Never commit secrets; load environment-specific values via Tauri’s secure APIs instead of embedding them in `tauri.conf.json`. When touching `capabilities/` or window permissions, document why the change is needed and validate the sandbox still launches with `npm run tauri dev`.
