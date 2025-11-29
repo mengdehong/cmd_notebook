@@ -254,24 +254,6 @@ body.toolbar-visible .toolbar {
   background: rgba(10, 30, 40, 0.03);
 }
 
-.nav-arrows {
-  display: none;
-  gap: 6px;
-}
-
-.nav-arrows button {
-  background: linear-gradient(
-    90deg,
-    rgba(56, 189, 248, 0.06),
-    rgba(244, 114, 182, 0.06)
-  );
-  border: 1px solid rgba(10, 30, 40, 0.06);
-  color: var(--text);
-  padding: 4px 6px;
-  border-radius: 6px;
-  cursor: pointer;
-}
-
 .card.selected {
   border-color: rgba(56, 189, 248, 0.4);
   box-shadow: 0 12px 30px rgba(56, 189, 248, 0.18);
@@ -505,28 +487,6 @@ input[type="text"] {
   padding: 8px 10px;
   border-radius: 10px;
   outline: none;
-}
-
-.single-view .grid {
-  grid-template-columns: 1fr !important;
-}
-
-.single-view .card {
-  display: none;
-}
-
-.single-view .card.focused {
-  display: block;
-  max-width: var(--focus-width, 820px);
-  width: 100%;
-  margin: 18px auto;
-  min-height: var(--focus-height, auto);
-  transition: min-height 0.18s ease, max-width 0.18s ease;
-}
-
-.single-view .card.focused .card-body {
-  min-height: var(--focus-height, auto);
-  transition: min-height 0.18s ease, opacity 0.12s ease;
 }
 
 .cmd-edit-input {

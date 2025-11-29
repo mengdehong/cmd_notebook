@@ -16,14 +16,10 @@ import {
 } from "./actions";
 import { render } from "./render";
 import {
-  getFocusedIndex,
   getSelectedBlockId,
   isEditingCommand,
-  isFocusMode,
   resetUiState,
   setEditingCommand,
-  setFocusMode,
-  setFocusedIndex,
   setSelectedBlockId,
 } from "./uiState";
 import { getActivePage, getState, redo, undo, updateState } from "./store";
@@ -42,8 +38,6 @@ type PageContextTarget = { pageId: string };
 
 let blockContextTarget: BlockContextTarget | null = null;
 let pageContextTarget: PageContextTarget | null = null;
-let touchStartX = 0;
-let touchEndX = 0;
 let pageDragSourceId: string | null = null;
 
 const blockContextOverlay = document.getElementById(
@@ -93,25 +87,6 @@ function setupGrid(grid: HTMLDivElement): void {
   grid.addEventListener("contextmenu", onGridContextMenu);
   grid.addEventListener("dragover", (event) => event.preventDefault());
   grid.addEventListener("drop", onGridDrop);
-  grid.addEventListener(
-    "touchstart",
-    (event) => {
-      if (!isFocusMode()) return;
-      if (!event.changedTouches.length) return;
-      touchStartX = event.changedTouches[0].clientX;
-    },
-    { passive: true }
-  );
-  grid.addEventListener(
-    "touchend",
-    (event) => {
-      if (!isFocusMode()) return;
-      if (!event.changedTouches.length) return;
-      touchEndX = event.changedTouches[0].clientX;
-      handleFocusSwipe();
-    },
-    { passive: true }
-  );
 }
 
 function setupPageMenu(): void {
@@ -364,7 +339,7 @@ function handleActionButton(button: HTMLButtonElement): void {
   const action = button.dataset.action;
   const blockId = button.dataset.blockId;
   if (!action) return;
-  if ((action === "add-command" || action.startsWith("nav-")) && !blockId) return;
+  if (action === "add-command" && !blockId) return;
 
   if (action === "add-command" && blockId) {
     void (async () => {
@@ -380,15 +355,6 @@ function handleActionButton(button: HTMLButtonElement): void {
       }
     })();
     return;
-  }
-
-  if (action === "nav-left") {
-    focusPrev();
-    return;
-  }
-
-  if (action === "nav-right") {
-    focusNext();
   }
 }
 
@@ -558,7 +524,6 @@ function hidePageContextMenu(): void {
 
 function setupButtons(): void {
   const addBlockBtn = document.getElementById("addBlock");
-  const toggleFocusBtn = document.getElementById("toggleFocus");
   const exportBtn = document.getElementById("exportFile");
   const importBtn = document.getElementById("importFile");
 
@@ -575,14 +540,6 @@ function setupButtons(): void {
     if (id) {
       setSelectedBlockId(id);
       showToast("区块已创建");
-    }
-  });
-
-  toggleFocusBtn?.addEventListener("click", () => {
-    if (!isFocusMode()) {
-      enterFocusMode(0);
-    } else {
-      exitFocusMode();
     }
   });
 
@@ -847,57 +804,7 @@ function setupKeyboardShortcuts(): void {
       redo();
       return;
     }
-
-    if (!ctrl && isFocusMode()) {
-      if (event.key === "ArrowRight") {
-        event.preventDefault();
-        focusNext();
-      } else if (event.key === "ArrowLeft") {
-        event.preventDefault();
-        focusPrev();
-      }
-    }
   });
-}
-
-function enterFocusMode(startIndex: number): void {
-  const blocks = getActiveBlocks();
-  if (!blocks.length) return;
-  setFocusMode(true);
-  const clamped = Math.max(0, Math.min(startIndex, blocks.length - 1));
-  setFocusedIndex(clamped);
-  render();
-}
-
-function exitFocusMode(): void {
-  setFocusMode(false);
-  render();
-}
-
-function focusNext(): void {
-  const blocks = getActiveBlocks();
-  if (!blocks.length) return;
-  const next = (getFocusedIndex() + 1) % blocks.length;
-  setFocusedIndex(next);
-  render();
-}
-
-function focusPrev(): void {
-  const blocks = getActiveBlocks();
-  if (!blocks.length) return;
-  const prev = (getFocusedIndex() - 1 + blocks.length) % blocks.length;
-  setFocusedIndex(prev);
-  render();
-}
-
-function handleFocusSwipe(): void {
-  const dx = touchEndX - touchStartX;
-  if (Math.abs(dx) < 30) return;
-  if (dx < 0) {
-    focusNext();
-  } else {
-    focusPrev();
-  }
 }
 
 function startInlineEdit(blockId: string, cmdId: string, rowEl: HTMLElement): void {
@@ -958,11 +865,6 @@ function startInlineEdit(blockId: string, cmdId: string, rowEl: HTMLElement): vo
   });
 
   input.addEventListener("blur", () => finish(true));
-}
-
-function getActiveBlocks() {
-  const page = getActivePage();
-  return page ? page.blocks : [];
 }
 
 function findBlock(blockId: string) {
