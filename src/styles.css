@@ -50,14 +50,17 @@ body {
   left: 50%;
   transform: translateX(-50%) translateY(-10px);
   top: 8px;
-  transition: transform 0.12s cubic-bezier(0.22, 1, 0.36, 1),
-    opacity 0.12s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.12s ease;
+  transition: transform 0.2s cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 0.2s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.2s ease;
   will-change: transform, opacity;
   padding: 6px 10px;
-  background: rgba(255, 255, 255, 0.92);
-  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  border-radius: 16px;
   z-index: 999;
-  box-shadow: 0 8px 24px rgba(10, 25, 40, 0.06);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08);
   opacity: 0;
 }
 
@@ -100,9 +103,10 @@ body.toolbar-visible .toolbar {
 }
 
 .grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  display: flex;
+  flex-wrap: wrap;
   gap: var(--gap);
+  align-items: flex-start;
 }
 
 .page-dropdown {
@@ -169,6 +173,9 @@ body.toolbar-visible .toolbar {
 }
 
 .card {
+  flex: 0 0 auto;
+  width: 320px;
+  position: relative;
   background: var(--card);
   border: 1px solid rgba(10, 30, 40, 0.06);
   border-radius: var(--radius);
@@ -510,11 +517,11 @@ input[type="text"] {
 
 .single-view .card.focused {
   display: block;
-  max-width: 820px;
+  max-width: var(--focus-width, 820px);
   width: 100%;
   margin: 18px auto;
   min-height: var(--focus-height, auto);
-  transition: min-height 0.18s ease;
+  transition: min-height 0.18s ease, max-width 0.18s ease;
 }
 
 .single-view .card.focused .card-body {
@@ -531,6 +538,41 @@ input[type="text"] {
   color: var(--text);
   outline: none;
   font: inherit;
+}
+
+.resize-handle {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 12px;
+  cursor: ew-resize;
+  z-index: 10;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.card:hover .resize-handle {
+  opacity: 1;
+}
+
+.resize-handle::after {
+  content: "";
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  height: 24px;
+  width: 4px;
+  background: rgba(0, 0, 0, 0.1);
+  border-radius: 2px;
+  backdrop-filter: blur(4px);
+}
+
+.card.resizing {
+  transition: none !important;
+  z-index: 100;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
 }
 
 @media (max-width: 420px) {

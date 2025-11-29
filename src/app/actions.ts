@@ -266,3 +266,20 @@ export function replaceAll(state: AppState): void {
   const snapshot: AppState = deepClone(state);
   replaceState(snapshot, true);
 }
+
+export function updateBlockWidth(blockId: string, width: number): boolean {
+  const state = getState();
+  const page = findPageContainingBlock(state, blockId);
+  if (!page) return false;
+  let changed = false;
+  updateState((draft) => {
+    const targetPage = draft.pages.find((item) => item.id === page.id);
+    if (!targetPage) return;
+    const block = targetPage.blocks.find((item) => item.id === blockId);
+    if (!block) return;
+    if (block.width === width) return;
+    block.width = width;
+    changed = true;
+  });
+  return changed;
+}

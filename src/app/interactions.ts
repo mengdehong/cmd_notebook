@@ -12,6 +12,7 @@ import {
   replaceAll,
   setActivePageById,
   updateCommand,
+  updateBlockWidth,
 } from "./actions";
 import { render } from "./render";
 import {
@@ -83,6 +84,7 @@ export function setupInteractions(): void {
   setupBlockContextMenu();
   setupPageContextMenu();
   setupSettingsMenu();
+  setupResizeInteractions();
 }
 
 function setupGrid(grid: HTMLDivElement): void {
@@ -697,6 +699,11 @@ function closeSettingsMenu(): void {
   if (fn) fn();
 }
 
+function isPageMenuOpen(): boolean {
+  const dropdown = document.getElementById("pageDropdown");
+  return dropdown?.classList.contains("open") ?? false;
+}
+
 function setupToolbarAutohide(): void {
   const toolbar = document.querySelector(".toolbar") as HTMLElement | null;
   if (!toolbar) return;
@@ -719,8 +726,8 @@ function setupToolbarAutohide(): void {
   };
 
   const scheduleHide = () => {
-    // 如果设置菜单打开，不隐藏工具栏
-    if (isSettingsMenuOpen()) {
+    // 如果设置菜单或页面菜单打开，不隐藏工具栏
+    if (isSettingsMenuOpen() || isPageMenuOpen()) {
       return;
     }
     if (hideTimer) {
@@ -728,7 +735,7 @@ function setupToolbarAutohide(): void {
     }
     hideTimer = window.setTimeout(() => {
       // 再次检查设置菜单状态
-      if (isSettingsMenuOpen()) {
+      if (isSettingsMenuOpen() || isPageMenuOpen()) {
         return;
       }
       visible = false;
@@ -767,6 +774,11 @@ function setupToolbarAutohide(): void {
     // 检查是否移动到设置菜单
     const settingsDropdown = document.getElementById("settingsDropdown");
     if (related && settingsDropdown && (related === settingsDropdown || settingsDropdown.contains(related))) {
+      return;
+    }
+    // 检查是否移动到页面菜单
+    const pageDropdown = document.getElementById("pageDropdown");
+    if (related && pageDropdown && (related === pageDropdown || pageDropdown.contains(related))) {
       return;
     }
     scheduleHide();
@@ -975,6 +987,53 @@ function findCommand(blockId: string, cmdId: string) {
   const info = findBlock(blockId);
   if (!info) return null;
   return info.block.cmds.find((item) => item.id === cmdId) ?? null;
+}
+
+function setupResizeInteractions(): void {
+  let resizingBlockId: string | null = null;
+  let startX = 0;
+  let startWidth = 0;
+  let card: HTMLElement | null = null;
+
+  document.addEventListener("mousedown", (event) => {
+    const target = event.target as HTMLElement;
+    if (target.classList.contains("resize-handle")) {
+      // Resize logic
+      const blockId = target.dataset.blockId;
+      if (!blockId) return;
+      
+      resizingBlockId = blockId;
+      startX = event.clientX;
+      card = target.closest(".card");
+      if (card) {
+        startWidth = card.getBoundingClientRect().width;
+        document.body.style.cursor = "ew-resize";
+        card.classList.add("resizing");
+      }
+      
+      // Prevent default drag behavior
+      event.preventDefault();
+    }
+  });
+
+  document.addEventListener("mousemove", (event) => {
+    if (!resizingBlockId || !card) return;
+    const dx = event.clientX - startX;
+    const newWidth = Math.max(320, startWidth + dx);
+    card.style.width = `${newWidth}px`;
+    card.style.flexGrow = "0";
+  });
+
+  document.addEventListener("mouseup", () => {
+    if (resizingBlockId && card) {
+      const finalWidth = parseInt(card.style.width);
+      updateBlockWidth(resizingBlockId, finalWidth);
+      document.body.style.cursor = "";
+      card.classList.remove("resizing");
+      resizingBlockId = null;
+      card = null;
+    }
+  });
 }
 
 function moveSelectedBlock(direction: -1 | 1): void {

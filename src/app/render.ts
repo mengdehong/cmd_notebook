@@ -13,6 +13,8 @@ import { reorderBlocksWithinPage } from "./actions";
 const MEASURE_WIDTH = 820;
 const MIN_FOCUS_HEIGHT = 180;
 const MAX_FOCUS_HEIGHT = 2000;
+const MIN_FOCUS_WIDTH = 320;
+const MAX_FOCUS_WIDTH = 1200;
 const FOCUS_JITTER_TOLERANCE = 4;
 
 const insertLine = document.createElement("div");
@@ -20,6 +22,7 @@ insertLine.className = "insert-line";
 document.body.appendChild(insertLine);
 
 let currentFocusHeight = 0;
+let currentFocusWidth = 0;
 
 export function render(): void {
   renderPageList();
@@ -49,7 +52,7 @@ export function render(): void {
   if (isFocusMode()) {
     document.body.classList.add("single-view");
     if (appEl) {
-      appEl.style.maxWidth = "880px";
+      // appEl.style.maxWidth = "880px"; // Let CSS handle it via --focus-width
     }
   } else {
     document.body.classList.remove("single-view");
@@ -63,7 +66,7 @@ export function render(): void {
     empty.className = "empty";
     empty.textContent = "暂无页面，点击「＋ 新建页」开始";
     grid.appendChild(empty);
-    resetFocusHeight();
+    resetFocusSize();
     updateCardSelection(grid);
     return;
   }
@@ -73,7 +76,7 @@ export function render(): void {
     empty.className = "empty";
     empty.textContent = "暂无区块，点击「新建区块」开始";
     grid.appendChild(empty);
-    resetFocusHeight();
+    resetFocusSize();
     updateCardSelection(grid);
     return;
   }
@@ -149,9 +152,20 @@ export function render(): void {
       card.classList.add("selected");
     }
 
+    if (block.width && !isFocusMode()) {
+      card.style.width = `${block.width}px`;
+      card.style.flexGrow = "0";
+    }
+
     if (isFocusMode()) {
       card.classList.toggle("focused", index === getFocusedIndex());
     }
+
+    // Resize handle
+    const resizeHandle = document.createElement("div");
+    resizeHandle.className = "resize-handle";
+    resizeHandle.dataset.blockId = block.id;
+    card.appendChild(resizeHandle);
 
     const header = document.createElement("div");
     header.className = "card-header";
@@ -228,9 +242,9 @@ export function render(): void {
   });
 
   if (isFocusMode()) {
-    requestAnimationFrame(() => measureFocusHeight(grid));
+    requestAnimationFrame(() => measureFocusSize(grid));
   } else {
-    resetFocusHeight();
+    resetFocusSize();
   }
 
   updateCardSelection(grid);
@@ -246,12 +260,14 @@ function updateCardSelection(grid: HTMLElement): void {
   });
 }
 
-function resetFocusHeight(): void {
+function resetFocusSize(): void {
   document.documentElement.style.removeProperty("--focus-height");
+  document.documentElement.style.removeProperty("--focus-width");
   currentFocusHeight = 0;
+  currentFocusWidth = 0;
 }
 
-function measureFocusHeight(grid: HTMLElement): void {
+function measureFocusSize(grid: HTMLElement): void {
   const cards = Array.from(grid.querySelectorAll<HTMLElement>(".card"));
   const focused =
     cards.find((card) => card.classList.contains("focused")) ??
@@ -259,42 +275,76 @@ function measureFocusHeight(grid: HTMLElement): void {
   if (!focused) return;
 
   const root = document.documentElement;
-  const prevValue = root.style.getPropertyValue("--focus-height");
-  const prevPriority = root.style.getPropertyPriority("--focus-height");
-  const hadValue = prevValue !== "";
-  if (hadValue) {
-    root.style.removeProperty("--focus-height");
+  
+  // Measure Width
+  const cloneW = focused.cloneNode(true) as HTMLElement;
+  cloneW.style.position = "absolute";
+  cloneW.style.visibility = "hidden";
+  cloneW.style.display = "block";
+  cloneW.style.width = "auto";
+  cloneW.style.maxWidth = "none";
+  cloneW.style.height = "auto";
+  document.body.appendChild(cloneW);
+  
+  // Find max command length to estimate width
+  const cmds = Array.from(cloneW.querySelectorAll(".cmd .text"));
+  let maxTextWidth = 0;
+  cmds.forEach(cmd => {
+      const range = document.createRange();
+      range.selectNodeContents(cmd);
+      const rect = range.getBoundingClientRect();
+      if (rect.width > maxTextWidth) maxTextWidth = rect.width;
+  });
+  
+  // Add padding
+  const estimatedWidth = maxTextWidth + 60; // padding + icon
+  document.body.removeChild(cloneW);
+
+  const measuredWidth = clamp(
+      Math.round(estimatedWidth),
+      MIN_FOCUS_WIDTH,
+      MAX_FOCUS_WIDTH
+  );
+
+  if (Math.abs(measuredWidth - currentFocusWidth) > FOCUS_JITTER_TOLERANCE) {
+      currentFocusWidth = measuredWidth;
+      root.style.setProperty("--focus-width", `${currentFocusWidth}px`);
   }
 
+  // Measure Height (using the calculated width)
   const appEl = document.getElementById("app") as HTMLElement | null;
   const containerWidth = appEl ? Math.floor(appEl.clientWidth) : MEASURE_WIDTH;
-  const measureWidth = Math.min(MEASURE_WIDTH, containerWidth || MEASURE_WIDTH);
+  // Use the calculated focus width if available, otherwise container width
+  const measureWidth = currentFocusWidth || Math.min(MEASURE_WIDTH, containerWidth || MEASURE_WIDTH);
 
-  const clone = focused.cloneNode(true) as HTMLElement;
-  clone.style.position = "absolute";
-  clone.style.visibility = "hidden";
-  clone.style.display = "block";
-  clone.style.width = `${measureWidth}px`;
-  clone.style.left = "0";
-  clone.style.top = "0";
-  document.body.appendChild(clone);
-  const measuredRaw = clone.getBoundingClientRect().height;
-  document.body.removeChild(clone);
+  const cloneH = focused.cloneNode(true) as HTMLElement;
+  cloneH.style.position = "absolute";
+  cloneH.style.visibility = "hidden";
+  cloneH.style.display = "block";
+  cloneH.style.width = `${measureWidth}px`;
+  cloneH.style.left = "0";
+  cloneH.style.top = "0";
+  cloneH.style.minHeight = "0"; // Override min-height from class
+  
+  // Also reset children that might have min-height dependent on the variable
+  const body = cloneH.querySelector('.card-body') as HTMLElement;
+  if (body) {
+      body.style.minHeight = "0";
+  }
 
-  const measured = clamp(
-    Math.round(measuredRaw || 0),
+  document.body.appendChild(cloneH);
+  const measuredHeightRaw = cloneH.getBoundingClientRect().height;
+  document.body.removeChild(cloneH);
+
+  const measuredHeight = clamp(
+    Math.round(measuredHeightRaw || 0),
     MIN_FOCUS_HEIGHT,
     MAX_FOCUS_HEIGHT
   );
 
-  if (measured > currentFocusHeight + FOCUS_JITTER_TOLERANCE) {
-    currentFocusHeight = measured;
-    document.documentElement.style.setProperty(
-      "--focus-height",
-      `${currentFocusHeight}px`
-    );
-  } else if (hadValue) {
-    root.style.setProperty("--focus-height", prevValue, prevPriority);
+  if (Math.abs(measuredHeight - currentFocusHeight) > FOCUS_JITTER_TOLERANCE) {
+    currentFocusHeight = measuredHeight;
+    root.style.setProperty("--focus-height", `${currentFocusHeight}px`);
   }
 }
 
