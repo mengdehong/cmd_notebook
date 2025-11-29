@@ -403,10 +403,8 @@ async function handleBlockContextAction(action: string): Promise<void> {
   } else if (blockContextTarget.type === "command") {
     const { blockId, cmdId } = blockContextTarget;
     if (action === "delete-cmd") {
-      if (confirm("删除该命令？")) {
-        if (deleteCommand(blockId, cmdId)) {
-          showToast("命令已删除");
-        }
+      if (deleteCommand(blockId, cmdId)) {
+        showToast("命令已删除");
       }
     } else if (action === "edit-note") {
       const command = findCommand(blockId, cmdId);
