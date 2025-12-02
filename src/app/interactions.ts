@@ -1,3 +1,8 @@
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import {
+  register as registerGlobalShortcut,
+  unregisterAll as unregisterAllShortcuts,
+} from "@tauri-apps/plugin-global-shortcut";
 import {
   addBlock,
   addCommand,
@@ -13,6 +18,8 @@ import {
   setActivePageById,
   updateCommand,
   updateBlockWidth,
+  updateBlockHeight,
+  updateBlockTitleColor,
   updateCommandNote,
 } from "./actions";
 import { render } from "./render";
@@ -28,7 +35,7 @@ import { copyText, exportStateToFile, pickImportFile } from "./storage";
 import { showToast } from "./toast";
 import { isMacPlatform } from "./utils";
 import { normalizeState } from "./types";
-import { promptDialog } from "./dialogs";
+import { promptDialog, isDialogOpen, confirmDialog } from "./dialogs";
 import { showDataDirInfo, changeDataDir, resetToDefaultDir } from "./settings";
 
 type BlockContextTarget =
@@ -40,6 +47,33 @@ type PageContextTarget = { pageId: string };
 let blockContextTarget: BlockContextTarget | null = null;
 let pageContextTarget: PageContextTarget | null = null;
 let pageDragSourceId: string | null = null;
+
+const COLOR_PRESETS = [
+  "",
+  "#38bdf8",
+  "#f472b6",
+  "#f59e0b",
+  "#8b5cf6",
+  "#10b981",
+  "#ef4444",
+];
+
+type SearchScope = "global" | "page";
+
+interface SearchResultItem {
+  pageId: string;
+  pageName: string;
+  blockId: string;
+  blockTitle: string;
+  cmdId?: string;
+  text: string;
+}
+
+let searchScope: SearchScope = "global";
+let searchResults: SearchResultItem[] = [];
+let activeSearchIndex = 0;
+let globalShortcutsReady = false;
+let lastShortcutAt = 0;
 
 const blockContextOverlay = document.getElementById(
   "context"
@@ -70,6 +104,167 @@ const deletePageBtn = pageContextMenu?.querySelector<HTMLButtonElement>(
   '[data-action="delete-page"]'
 );
 
+const searchOverlay = document.getElementById("searchOverlay") as HTMLDivElement | null;
+const searchInput = document.getElementById("searchInput") as HTMLInputElement | null;
+const searchResultsEl = document.getElementById("searchResults") as HTMLDivElement | null;
+const searchScopeLabel = document.getElementById("searchScopeLabel") as HTMLSpanElement | null;
+
+
+function isSearchOpen(): boolean {
+  return searchOverlay?.classList.contains("open") ?? false;
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function renderMatch(text: string, query: string): string {
+  if (!query) return escapeHtml(text);
+  const lower = text.toLowerCase();
+  const q = query.toLowerCase();
+  const idx = lower.indexOf(q);
+  if (idx === -1) return escapeHtml(text);
+  const before = escapeHtml(text.slice(0, idx));
+  const hit = escapeHtml(text.slice(idx, idx + q.length));
+  const after = escapeHtml(text.slice(idx + q.length));
+  return `${before}<mark>${hit}</mark>${after}`;
+}
+
+function closeSearch(): void {
+  if (!searchOverlay || !searchInput) return;
+  searchOverlay.classList.remove("open");
+  searchOverlay.setAttribute("aria-hidden", "true");
+  searchInput.value = "";
+}
+
+function refreshSearchResults(query: string): void {
+  if (!searchResultsEl) return;
+  const normalized = query.trim().toLowerCase();
+  const state = getState();
+  const pageLimit = searchScope === "page" ? getActivePage()?.id : null;
+  const all: SearchResultItem[] = [];
+
+  for (const page of state.pages) {
+    if (pageLimit && page.id !== pageLimit) continue;
+    for (const block of page.blocks) {
+      const blockHit = !normalized || block.title.toLowerCase().includes(normalized);
+      if (blockHit) {
+        all.push({
+          pageId: page.id,
+          pageName: page.name,
+          blockId: block.id,
+          blockTitle: block.title,
+          text: block.title,
+        });
+      }
+      for (const cmd of block.cmds) {
+        const text = cmd.text;
+        const note = cmd.note ?? "";
+        if (
+          !normalized ||
+          text.toLowerCase().includes(normalized) ||
+          note.toLowerCase().includes(normalized)
+        ) {
+          all.push({
+            pageId: page.id,
+            pageName: page.name,
+            blockId: block.id,
+            blockTitle: block.title,
+            cmdId: cmd.id,
+            text,
+          });
+        }
+      }
+    }
+  }
+
+  searchResults = all.slice(0, 80);
+  if (!searchResults.length) {
+    searchResultsEl.innerHTML = '<div class="muted" style="padding: 12px;">没有匹配结果</div>';
+    return;
+  }
+
+  if (activeSearchIndex >= searchResults.length) {
+    activeSearchIndex = searchResults.length - 1;
+  }
+
+  searchResultsEl.innerHTML = "";
+  searchResults.forEach((item, index) => {
+    const div = document.createElement("div");
+    div.className = "search-item";
+    if (index === activeSearchIndex) {
+      div.classList.add("active");
+    }
+
+    const meta = document.createElement("div");
+    meta.className = "meta";
+    meta.textContent = `${item.pageName} › ${item.blockTitle}${item.cmdId ? " · 命令" : " · 区块"}`;
+
+    const title = document.createElement("div");
+    title.className = "title";
+    title.innerHTML = renderMatch(item.cmdId ? item.text : item.blockTitle, query);
+
+    const match = document.createElement("div");
+    match.className = "match";
+    match.innerHTML = renderMatch(item.text, query);
+
+    div.append(meta, title, match);
+    div.dataset.index = String(index);
+    div.addEventListener("click", () => {
+      jumpToSearchResult(index);
+    });
+
+    searchResultsEl.appendChild(div);
+  });
+}
+
+function openSearch(scope: SearchScope): void {
+  if (!searchOverlay || !searchInput || !searchScopeLabel) return;
+  searchScope = scope;
+  searchScopeLabel.textContent = scope === "global" ? "全局" : "当前页";
+  searchOverlay.classList.add("open");
+  searchOverlay.setAttribute("aria-hidden", "false");
+  searchInput.value = "";
+  activeSearchIndex = 0;
+  refreshSearchResults("");
+  searchInput.focus();
+}
+
+function moveSearchHighlight(delta: number): void {
+  if (!searchResults.length) return;
+  activeSearchIndex = (activeSearchIndex + delta + searchResults.length) % searchResults.length;
+  refreshSearchResults(searchInput?.value ?? "");
+  const active = searchResultsEl?.querySelector<HTMLElement>(`.search-item[data-index="${activeSearchIndex}"]`);
+  active?.scrollIntoView({ block: "nearest" });
+}
+
+function jumpToSearchResult(index: number): void {
+  const target = searchResults[index];
+  if (!target) return;
+  closeSearch();
+  setActivePageById(target.pageId);
+  setSelectedBlockId(target.blockId);
+  render();
+  const grid = document.getElementById("grid") as HTMLDivElement | null;
+  const card = grid?.querySelector<HTMLElement>(`.card[data-block-id="${target.blockId}"]`);
+  if (card) {
+    card.scrollIntoView({ behavior: "smooth", block: "center" });
+    card.classList.add("selected");
+  }
+  if (target.cmdId && card) {
+    const row = card.querySelector<HTMLElement>(`.cmd[data-cmd-id="${target.cmdId}"]`);
+    if (row) {
+      row.classList.add("highlight-once");
+      window.setTimeout(() => row.classList.remove("highlight-once"), 1400);
+    }
+  }
+}
+
 export function setupInteractions(): void {
   const grid = document.getElementById("grid") as HTMLDivElement | null;
   if (!grid) throw new Error("grid container not found");
@@ -78,6 +273,8 @@ export function setupInteractions(): void {
   setupPageMenu();
   setupToolbarAutohide();
   setupButtons();
+  setupSearchUI();
+  setupGlobalShortcut();
   setupKeyboardShortcuts();
   setupBlockContextMenu();
   setupPageContextMenu();
@@ -344,6 +541,7 @@ function handleActionButton(button: HTMLButtonElement): void {
   const blockId = button.dataset.blockId;
   if (!action) return;
   if (action === "add-command" && !blockId) return;
+  if (action === "toggle-color" && !blockId) return;
 
   if (action === "add-command" && blockId) {
     void (async () => {
@@ -359,6 +557,10 @@ function handleActionButton(button: HTMLButtonElement): void {
       }
     })();
     return;
+  }
+
+  if (action === "toggle-color" && blockId) {
+    cycleBlockTitleColor(blockId);
   }
 }
 
@@ -447,23 +649,28 @@ async function handlePageContextAction(action: string): Promise<void> {
       showToast("至少保留一个页面");
       return;
     }
-    if (confirm("确定删除该页面及其所有区块？")) {
-      if (deletePage(pageId)) {
-        showToast("页面已删除", {
-          actionLabel: "撤销",
-          onAction: () => {
-            if (undo()) {
-              render();
-              showToast("已恢复页面");
-            }
-          },
-        });
-        const dropdown = document.getElementById("pageDropdown") as HTMLDivElement | null;
-        if (dropdown) {
-          dropdown.classList.remove("open");
-        }
-        pageDragSourceId = null;
+    const confirmed = await confirmDialog({
+      title: "删除页面",
+      message: "确定删除该页面及其所有区块？操作不可撤销。",
+      confirmLabel: "删除",
+      cancelLabel: "取消",
+    });
+    if (!confirmed) return;
+    if (deletePage(pageId)) {
+      showToast("页面已删除", {
+        actionLabel: "撤销",
+        onAction: () => {
+          if (undo()) {
+            render();
+            showToast("已恢复页面");
+          }
+        },
+      });
+      const dropdown = document.getElementById("pageDropdown") as HTMLDivElement | null;
+      if (dropdown) {
+        dropdown.classList.remove("open");
       }
+      pageDragSourceId = null;
     }
   }
 }
@@ -545,6 +752,8 @@ function setupButtons(): void {
   const addBlockBtn = document.getElementById("addBlock");
   const exportBtn = document.getElementById("exportFile");
   const importBtn = document.getElementById("importFile");
+  const searchBtn = document.getElementById("searchBtn");
+  const minimizeBtn = document.getElementById("minimizeBtn");
 
   addBlockBtn?.addEventListener("click", async () => {
     const name = await promptDialog({
@@ -595,6 +804,57 @@ function setupButtons(): void {
       showToast("导入失败：JSON 解析错误");
     }
   });
+
+  searchBtn?.addEventListener("click", () => openSearch("global"));
+
+  minimizeBtn?.addEventListener("click", async () => {
+    await toggleMinimize();
+  });
+}
+
+function setupSearchUI(): void {
+  if (!searchOverlay || !searchInput || !searchResultsEl) return;
+  const overlay = searchOverlay;
+
+  overlay.addEventListener("click", (event) => {
+    if (event.target === overlay) {
+      closeSearch();
+    }
+  });
+
+  searchInput.addEventListener("input", () => {
+    activeSearchIndex = 0;
+    refreshSearchResults(searchInput.value);
+  });
+}
+
+function setupGlobalShortcut(): void {
+  const hasTauri = Boolean((window as unknown as { __TAURI__?: unknown }).__TAURI__);
+  if (!hasTauri) return;
+  if (globalShortcutsReady) return;
+  const register = async (combo: string) => {
+    try {
+      await registerGlobalShortcut(combo, () => {
+        const now = Date.now();
+        if (now - lastShortcutAt < 200) return;
+        lastShortcutAt = now;
+        void toggleMinimize();
+      });
+    } catch (error) {
+      console.warn(`register shortcut ${combo} failed`, error);
+    }
+  };
+
+  void (async () => {
+    try {
+      await unregisterAllShortcuts();
+    } catch (error) {
+      console.warn("unregister shortcuts failed", error);
+    }
+    await register("CmdOrCtrl+M");
+    await register("CmdOrCtrl+Shift+M");
+    globalShortcutsReady = true;
+  })();
 }
 
 function setupSettingsMenu(): void {
@@ -777,6 +1037,34 @@ function setupKeyboardShortcuts(): void {
         active.tagName === "TEXTAREA" ||
         active.isContentEditable);
 
+    if (isDialogOpen()) {
+      return;
+    }
+
+    if (isSearchOpen()) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closeSearch();
+        return;
+      }
+      if (event.key === "Enter") {
+        event.preventDefault();
+        jumpToSearchResult(activeSearchIndex);
+        return;
+      }
+      if (event.key === "ArrowDown") {
+        event.preventDefault();
+        moveSearchHighlight(1);
+        return;
+      }
+      if (event.key === "ArrowUp") {
+        event.preventDefault();
+        moveSearchHighlight(-1);
+        return;
+      }
+      return;
+    }
+
     if (ctrl && (event.key === "n" || event.key === "N")) {
       if (isInputActive) return;
       event.preventDefault();
@@ -823,6 +1111,25 @@ function setupKeyboardShortcuts(): void {
       redo();
       return;
     }
+
+    if (ctrl && event.key.toLowerCase() === "k") {
+      event.preventDefault();
+      openSearch("global");
+      return;
+    }
+
+    if (ctrl && event.key.toLowerCase() === "f") {
+      event.preventDefault();
+      openSearch("page");
+      return;
+    }
+
+    if (ctrl && event.key === "Tab") {
+      event.preventDefault();
+      switchPage(event.shiftKey ? -1 : 1);
+      return;
+    }
+
   });
 }
 
@@ -897,6 +1204,16 @@ function findBlock(blockId: string) {
   return null;
 }
 
+function cycleBlockTitleColor(blockId: string): void {
+  const info = findBlock(blockId);
+  if (!info) return;
+  const current = info.block.titleColor ?? "";
+  const idx = COLOR_PRESETS.indexOf(current);
+  const next = COLOR_PRESETS[(idx + 1) % COLOR_PRESETS.length];
+  updateBlockTitleColor(blockId, next || null);
+  render();
+}
+
 function findCommandText(blockId: string, cmdId: string): string | null {
   const info = findBlock(blockId);
   if (!info) return null;
@@ -913,46 +1230,98 @@ function findCommand(blockId: string, cmdId: string) {
 function setupResizeInteractions(): void {
   let resizingBlockId: string | null = null;
   let startX = 0;
+  let startY = 0;
   let startWidth = 0;
+  let startHeight = 0;
   let card: HTMLElement | null = null;
+  let mode: "width" | "height" | null = null;
+  let latestWidth: number | null = null;
+  let latestHeight: number | null = null;
 
   document.addEventListener("mousedown", (event) => {
     const target = event.target as HTMLElement;
-    if (target.classList.contains("resize-handle")) {
-      // Resize logic
-      const blockId = target.dataset.blockId;
-      if (!blockId) return;
-      
-      resizingBlockId = blockId;
-      startX = event.clientX;
-      card = target.closest(".card");
-      if (card) {
-        startWidth = card.getBoundingClientRect().width;
-        document.body.style.cursor = "ew-resize";
-        card.classList.add("resizing");
-      }
-      
-      // Prevent default drag behavior
-      event.preventDefault();
+    const direction = target.dataset.direction as "width" | "height" | undefined;
+    if (!target.classList.contains("resize-handle") || !direction) return;
+
+    const blockId = target.dataset.blockId;
+    if (!blockId) return;
+
+    resizingBlockId = blockId;
+    mode = direction;
+    startX = event.clientX;
+    startY = event.clientY;
+    card = target.closest(".card");
+    latestWidth = null;
+    latestHeight = null;
+    if (card) {
+      const rect = card.getBoundingClientRect();
+      startWidth = rect.width;
+      startHeight = rect.height;
+      document.body.style.cursor = direction === "width" ? "ew-resize" : "ns-resize";
+      card.classList.add("resizing");
     }
+
+    // Prevent default drag behavior
+    event.preventDefault();
   });
 
   document.addEventListener("mousemove", (event) => {
-    if (!resizingBlockId || !card) return;
-    const dx = event.clientX - startX;
-    const newWidth = Math.max(320, startWidth + dx);
-    card.style.width = `${newWidth}px`;
-    card.style.flexGrow = "0";
+    if (!resizingBlockId || !card || !mode) return;
+    if (mode === "width") {
+      const dx = event.clientX - startX;
+      const newWidth = Math.max(320, startWidth + dx);
+      latestWidth = newWidth;
+      card.style.width = `${newWidth}px`;
+      card.style.flexGrow = "0";
+      return;
+    }
+
+    const dy = event.clientY - startY;
+    const minHeight = 180;
+    const newHeight = Math.max(minHeight, startHeight + dy);
+    latestHeight = newHeight;
+    card.style.height = `${newHeight}px`;
+    card.style.minHeight = `${minHeight}px`;
   });
 
   document.addEventListener("mouseup", () => {
-    if (resizingBlockId && card) {
-      const finalWidth = parseInt(card.style.width);
-      updateBlockWidth(resizingBlockId, finalWidth);
-      document.body.style.cursor = "";
+    if (resizingBlockId && card && mode === "width" && latestWidth !== null) {
+      updateBlockWidth(resizingBlockId, latestWidth);
+    }
+    if (resizingBlockId && card && mode === "height" && latestHeight !== null) {
+      updateBlockHeight(resizingBlockId, latestHeight);
+    }
+
+    if (card) {
       card.classList.remove("resizing");
-      resizingBlockId = null;
-      card = null;
+    }
+    document.body.style.cursor = "";
+    resizingBlockId = null;
+    card = null;
+    mode = null;
+    latestWidth = null;
+    latestHeight = null;
+  });
+
+  document.addEventListener("dblclick", (event) => {
+    const target = event.target as HTMLElement;
+    const direction = target.dataset.direction as "width" | "height" | undefined;
+    if (!target.classList.contains("resize-handle") || !direction) return;
+    const blockId = target.dataset.blockId;
+    const host = target.closest<HTMLElement>(".card");
+    if (!blockId) return;
+    if (direction === "width") {
+      updateBlockWidth(blockId, null);
+      if (host) {
+        host.style.width = "";
+        host.style.flexGrow = "";
+      }
+    } else {
+      updateBlockHeight(blockId, null);
+      if (host) {
+        host.style.height = "";
+        host.style.minHeight = "";
+      }
     }
   });
 }
@@ -974,4 +1343,41 @@ function moveSelectedBlock(direction: -1 | 1): void {
     const [item] = targetPage.blocks.splice(from, 1);
     targetPage.blocks.splice(targetIndex, 0, item);
   });
+}
+
+function switchPage(direction: -1 | 1): void {
+  const state = getState();
+  if (!state.pages.length) return;
+  const active = getActivePage();
+  const currentIndex = active ? state.pages.findIndex((page) => page.id === active.id) : 0;
+  const nextIndex = (currentIndex + direction + state.pages.length) % state.pages.length;
+  const target = state.pages[nextIndex];
+  if (target) {
+    setActivePageById(target.id);
+    render();
+  }
+}
+
+async function toggleMinimize(forceShow?: boolean): Promise<void> {
+  const hasTauri = Boolean((window as unknown as { __TAURI__?: unknown }).__TAURI__);
+  if (!hasTauri) {
+    showToast("仅桌面版支持后台运行");
+    return;
+  }
+  try {
+    const win = getCurrentWindow();
+    const visible = await win.isVisible();
+    const focused = await win.isFocused();
+
+    if (!forceShow && visible && focused) {
+      await win.hide();
+    } else {
+      await win.unminimize();
+      await win.show();
+      await win.setFocus();
+    }
+  } catch (error) {
+    console.warn("minimize toggle failed", error);
+    showToast("后台切换失败");
+  }
 }

@@ -262,12 +262,51 @@ export function reorderBlocksWithinPage(
   return true;
 }
 
+export function reorderCommandsWithinBlock(
+  blockId: string,
+  sourceId: string,
+  targetId: string,
+  position: "before" | "after"
+): boolean {
+  if (sourceId === targetId) return false;
+  const state = getState();
+  const page = findPageContainingBlock(state, blockId);
+  if (!page) return false;
+  const block = page.blocks.find((item) => item.id === blockId);
+  if (!block) return false;
+  const srcIdx = block.cmds.findIndex((cmd) => cmd.id === sourceId);
+  const dstIdx = block.cmds.findIndex((cmd) => cmd.id === targetId);
+  if (srcIdx === -1 || dstIdx === -1) return false;
+
+  updateState((draft) => {
+    const targetPage = draft.pages.find((item) => item.id === page.id);
+    if (!targetPage) return;
+    const targetBlock = targetPage.blocks.find((item) => item.id === blockId);
+    if (!targetBlock) return;
+    const from = targetBlock.cmds.findIndex((cmd) => cmd.id === sourceId);
+    if (from === -1) return;
+    const [item] = targetBlock.cmds.splice(from, 1);
+    const targetIndex = targetBlock.cmds.findIndex((cmd) => cmd.id === targetId);
+    if (targetIndex === -1) {
+      targetBlock.cmds.splice(from, 0, item);
+      return;
+    }
+    const insertAt =
+      position === "before"
+        ? targetIndex
+        : Math.min(targetIndex + 1, targetBlock.cmds.length);
+    targetBlock.cmds.splice(insertAt, 0, item);
+  });
+
+  return true;
+}
+
 export function replaceAll(state: AppState): void {
   const snapshot: AppState = deepClone(state);
   replaceState(snapshot, true);
 }
 
-export function updateBlockWidth(blockId: string, width: number): boolean {
+export function updateBlockWidth(blockId: string, width: number | null | undefined): boolean {
   const state = getState();
   const page = findPageContainingBlock(state, blockId);
   if (!page) return false;
@@ -277,8 +316,48 @@ export function updateBlockWidth(blockId: string, width: number): boolean {
     if (!targetPage) return;
     const block = targetPage.blocks.find((item) => item.id === blockId);
     if (!block) return;
-    if (block.width === width) return;
-    block.width = width;
+    const normalized = typeof width === "number" ? width : undefined;
+    if (block.width === normalized) return;
+    block.width = normalized;
+    changed = true;
+  });
+  return changed;
+}
+
+export function updateBlockHeight(blockId: string, height: number | null | undefined): boolean {
+  const state = getState();
+  const page = findPageContainingBlock(state, blockId);
+  if (!page) return false;
+  let changed = false;
+  updateState((draft) => {
+    const targetPage = draft.pages.find((item) => item.id === page.id);
+    if (!targetPage) return;
+    const block = targetPage.blocks.find((item) => item.id === blockId);
+    if (!block) return;
+    const normalized = typeof height === "number" ? height : undefined;
+    if (block.height === normalized) return;
+    block.height = normalized;
+    changed = true;
+  });
+  return changed;
+}
+
+export function updateBlockTitleColor(
+  blockId: string,
+  color: string | null | undefined
+): boolean {
+  const state = getState();
+  const page = findPageContainingBlock(state, blockId);
+  if (!page) return false;
+  let changed = false;
+  updateState((draft) => {
+    const targetPage = draft.pages.find((item) => item.id === page.id);
+    if (!targetPage) return;
+    const block = targetPage.blocks.find((item) => item.id === blockId);
+    if (!block) return;
+    const normalized = color?.trim();
+    if (block.titleColor === normalized) return;
+    block.titleColor = normalized && normalized.length ? normalized : undefined;
     changed = true;
   });
   return changed;

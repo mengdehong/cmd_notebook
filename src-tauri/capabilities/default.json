@@ -12,6 +12,17 @@
     "fs:default",
     "fs:allow-write-text-file",
     "fs:allow-read-text-file",
-    "opener:default"
+    "opener:default",
+    "core:window:allow-minimize",
+    "core:window:allow-unminimize",
+    "core:window:allow-show",
+    "core:window:allow-hide",
+    "core:window:allow-is-visible",
+    "core:window:allow-set-focus",
+    "core:menu:default",
+    "core:tray:default",
+    "global-shortcut:default",
+    "global-shortcut:allow-register",
+    "global-shortcut:allow-unregister-all"
   ]
 }

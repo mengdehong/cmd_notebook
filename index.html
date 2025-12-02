@@ -13,8 +13,10 @@
       <div class="toolbar">
         <button id="managePages" title="页面管理">📑 页面</button>
         <button id="addBlock">➕ 新建区块</button>
+        <button id="searchBtn" title="搜索 (Ctrl/Cmd+K)">🔍 搜索</button>
         <button id="importFile" title="导入命令库">📂 导入</button>
         <button id="exportFile" title="导出到文件">💾 导出</button>
+        <button id="minimizeBtn" title="最小化到后台">🌓 后台</button>
         <button id="settingsBtn" title="设置">⚙️ 设置</button>
       </div>
       <div class="page-dropdown" id="pageDropdown">
@@ -62,5 +64,23 @@
     </div>
 
     <div class="toast" id="toast">已复制到剪贴板</div>
+
+    <div class="search-overlay" id="searchOverlay" aria-hidden="true">
+      <div class="search-panel">
+        <div class="search-header">
+          <input
+            id="searchInput"
+            type="text"
+            placeholder="搜索命令、区块或页面 (Ctrl/Cmd+K)"
+            autocomplete="off"
+          />
+          <span class="search-scope" id="searchScopeLabel">全局</span>
+        </div>
+        <div class="search-results" id="searchResults"></div>
+        <div class="search-footer">
+          <span>Enter 跳转 · Esc 关闭 · ↑↓ 选择</span>
+        </div>
+      </div>
+    </div>
   </body>
 </html>
