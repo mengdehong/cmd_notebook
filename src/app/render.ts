@@ -3,11 +3,146 @@ import {
   getSelectedBlockId,
   setSelectedBlockId,
 } from "./uiState";
-import { reorderBlocksWithinPage } from "./actions";
+import { reorderBlocksWithinPage, reorderCommandsWithinBlock } from "./actions";
 
 const insertLine = document.createElement("div");
 insertLine.className = "insert-line";
 document.body.appendChild(insertLine);
+
+let draggingCommand: { blockId: string; cmdId: string } | null = null;
+let draggingBlock: {
+  pageId: string;
+  blockId: string;
+  targetId: string | null;
+  position: "before" | "after";
+  grid: HTMLElement;
+  sourceCard: HTMLElement;
+} | null = null;
+let dragContext: {
+  blockId: string;
+  cmdId: string;
+  body: HTMLElement;
+  sourceRow: HTMLElement;
+  targetCmdId: string | null;
+  position: "before" | "after";
+} | null = null;
+
+function resetDragContext(): void {
+  draggingCommand = null;
+  dragContext = null;
+  insertLine.style.display = "none";
+  document.removeEventListener("pointermove", handleCommandPointerMove);
+}
+
+function handleCommandPointerMove(event: PointerEvent): void {
+  if (!dragContext) return;
+  const { body, cmdId } = dragContext;
+  const rows = Array.from(body.querySelectorAll<HTMLElement>(".cmd"));
+  let targetCmdId: string | null = null;
+  let position: "before" | "after" = "after";
+
+  for (const row of rows) {
+    const id = row.dataset.cmdId;
+    if (!id || id === cmdId) continue;
+    const rect = row.getBoundingClientRect();
+    const mid = rect.top + rect.height / 2;
+    if (event.clientY < mid) {
+      targetCmdId = id;
+      position = "before";
+      insertLine.style.top = `${rect.top - 2}px`;
+      insertLine.style.left = `${rect.left}px`;
+      insertLine.style.width = `${rect.width}px`;
+      insertLine.style.display = "block";
+      break;
+    }
+    targetCmdId = id;
+    position = "after";
+    insertLine.style.top = `${rect.bottom - 1}px`;
+    insertLine.style.left = `${rect.left}px`;
+    insertLine.style.width = `${rect.width}px`;
+    insertLine.style.display = "block";
+  }
+
+  dragContext.targetCmdId = targetCmdId;
+  dragContext.position = position;
+}
+
+function resetBlockDrag(): void {
+  if (draggingBlock) {
+    draggingBlock.sourceCard.classList.remove("dragging");
+  }
+  draggingBlock = null;
+  insertLine.style.display = "none";
+  document.removeEventListener("pointermove", handleBlockPointerMove);
+  document.body.classList.remove("dragging-block");
+  const grid = document.getElementById("grid");
+  grid?.classList.remove("block-dragging");
+  document.querySelectorAll<HTMLElement>(".card").forEach((el) => {
+    el.classList.remove("drop-target");
+  });
+}
+
+function handleBlockPointerMove(event: PointerEvent): void {
+  if (!draggingBlock) return;
+  const { grid, blockId } = draggingBlock;
+  const cards = Array.from(grid.querySelectorAll<HTMLElement>(".card"))
+    .filter((card) => card.dataset.blockId && card.dataset.blockId !== blockId);
+
+  if (!cards.length) {
+    insertLine.style.display = "none";
+    draggingBlock.targetId = null;
+    return;
+  }
+
+  let targetId: string | null = null;
+  let position: "before" | "after" = "after";
+
+  const first = cards[0];
+  const last = cards[cards.length - 1];
+  const firstRect = first.getBoundingClientRect();
+  const lastRect = last.getBoundingClientRect();
+
+  if (event.clientY < firstRect.top) {
+    targetId = first.dataset.blockId ?? null;
+    position = "before";
+    insertLine.style.top = `${firstRect.top - 2}px`;
+    insertLine.style.left = `${firstRect.left}px`;
+    insertLine.style.width = `${firstRect.width}px`;
+    insertLine.style.display = "block";
+  } else if (event.clientY > lastRect.bottom) {
+    targetId = last.dataset.blockId ?? null;
+    position = "after";
+    insertLine.style.top = `${lastRect.bottom - 1}px`;
+    insertLine.style.left = `${lastRect.left}px`;
+    insertLine.style.width = `${lastRect.width}px`;
+    insertLine.style.display = "block";
+  } else {
+    for (const card of cards) {
+      const id = card.dataset.blockId;
+      if (!id) continue;
+      const rect = card.getBoundingClientRect();
+      const mid = rect.top + rect.height / 2;
+      if (event.clientY < mid) {
+        targetId = id;
+        position = "before";
+        insertLine.style.top = `${rect.top - 2}px`;
+        insertLine.style.left = `${rect.left}px`;
+        insertLine.style.width = `${rect.width}px`;
+        insertLine.style.display = "block";
+        break;
+      }
+      targetId = id;
+      position = "after";
+      insertLine.style.top = `${rect.bottom - 1}px`;
+      insertLine.style.left = `${rect.left}px`;
+      insertLine.style.width = `${rect.width}px`;
+      insertLine.style.display = "block";
+    }
+  }
+
+  draggingBlock.targetId = targetId;
+  draggingBlock.position = position;
+}
 
 export function render(): void {
   renderPageList();
@@ -47,7 +182,7 @@ export function render(): void {
     card.className = "card";
     card.dataset.blockId = block.id;
     card.dataset.role = "block";
-    card.draggable = true;
+    card.draggable = false;
     card.tabIndex = 0;
 
     card.addEventListener("click", () => {
@@ -55,81 +190,98 @@ export function render(): void {
       updateCardSelection(grid);
     });
 
-    card.addEventListener("dragstart", (event) => {
-      event.dataTransfer?.setData("text/plain", block.id);
-      event.dataTransfer?.setDragImage(card, 20, 20);
-      event.dataTransfer!.effectAllowed = "move";
-      card.classList.add("dragging");
-    });
-
-    card.addEventListener("dragend", () => {
-      card.classList.remove("dragging");
-      insertLine.style.display = "none";
-      grid.querySelectorAll<HTMLElement>(".card").forEach((el) => {
-        el.classList.remove("drop-target");
-      });
-    });
-
-    card.addEventListener("dragover", (event) => {
-      event.preventDefault();
-      const rect = card.getBoundingClientRect();
-      const y = event.clientY;
-      const mid = rect.top + rect.height / 2;
-      insertLine.style.display = "block";
-      insertLine.style.width = `${rect.width}px`;
-      insertLine.style.left = `${rect.left}px`;
-      if (y < mid) {
-        insertLine.style.top = `${rect.top - 2}px`;
-      } else {
-        insertLine.style.top = `${rect.bottom - 1}px`;
+    card.addEventListener("pointerdown", (event) => {
+      if (event.button !== 0 || draggingCommand) return;
+      const target = event.target as HTMLElement;
+      if (
+        target.closest(".resize-handle") ||
+        target.closest("button") ||
+        target.closest(".cmd")
+      ) {
+        return;
       }
-      card.classList.add("drop-target");
-    });
-
-    card.addEventListener("dragleave", () => {
-      card.classList.remove("drop-target");
-      insertLine.style.display = "none";
-    });
-
-    card.addEventListener("drop", (event) => {
       event.preventDefault();
-      insertLine.style.display = "none";
-      card.classList.remove("drop-target");
-      const srcId = event.dataTransfer?.getData("text/plain");
-      if (!srcId || srcId === block.id) return;
-      const rect = card.getBoundingClientRect();
-      const y = event.clientY;
-      const mid = rect.top + rect.height / 2;
-      const before = y < mid;
-      reorderBlocksWithinPage(
-        activePage.id,
-        srcId,
-        block.id,
-        before ? "before" : "after"
-      );
+      draggingBlock = {
+        pageId: activePage.id,
+        blockId: block.id,
+        targetId: null,
+        position: "after",
+        grid,
+        sourceCard: card,
+      };
+      card.classList.add("dragging");
+      document.body.classList.add("dragging-block");
+      grid.classList.add("block-dragging");
+      document.addEventListener("pointermove", handleBlockPointerMove);
+
+      const handlePointerUp = () => {
+        if (draggingBlock && draggingBlock.targetId && draggingBlock.targetId !== draggingBlock.blockId) {
+          reorderBlocksWithinPage(
+            draggingBlock.pageId,
+            draggingBlock.blockId,
+            draggingBlock.targetId,
+            draggingBlock.position
+          );
+        }
+        resetBlockDrag();
+      };
+
+      document.addEventListener("pointerup", handlePointerUp, { once: true });
     });
 
     if (block.id === getSelectedBlockId()) {
       card.classList.add("selected");
     }
 
-    if (block.width) {
+    if (typeof block.width === "number") {
       card.style.width = `${block.width}px`;
       card.style.flexGrow = "0";
     }
 
-    // Resize handle
-    const resizeHandle = document.createElement("div");
-    resizeHandle.className = "resize-handle";
-    resizeHandle.dataset.blockId = block.id;
-    card.appendChild(resizeHandle);
+    if (typeof block.height === "number") {
+      card.style.height = `${block.height}px`;
+      card.style.minHeight = `${block.height}px`;
+    }
+
+    // Resize handles
+    const resizeHandleX = document.createElement("div");
+    resizeHandleX.className = "resize-handle resize-handle-x";
+    resizeHandleX.dataset.blockId = block.id;
+    resizeHandleX.dataset.direction = "width";
+    card.appendChild(resizeHandleX);
+
+    const resizeHandleY = document.createElement("div");
+    resizeHandleY.className = "resize-handle resize-handle-y";
+    resizeHandleY.dataset.blockId = block.id;
+    resizeHandleY.dataset.direction = "height";
+    card.appendChild(resizeHandleY);
 
     const header = document.createElement("div");
     header.className = "card-header";
 
+    const titleWrap = document.createElement("div");
+    titleWrap.style.display = "flex";
+    titleWrap.style.alignItems = "center";
+    titleWrap.style.gap = "6px";
+
     const titleDiv = document.createElement("div");
     titleDiv.className = "card-title";
     titleDiv.textContent = block.title || "未命名区块";
+    if (block.titleColor) {
+      titleDiv.style.color = block.titleColor;
+    }
+
+    const colorBtn = document.createElement("button");
+    colorBtn.className = "color-toggle compact";
+    colorBtn.dataset.action = "toggle-color";
+    colorBtn.dataset.blockId = block.id;
+    colorBtn.title = "切换标题颜色";
+    if (block.titleColor) {
+      colorBtn.style.background = block.titleColor;
+      colorBtn.style.borderColor = block.titleColor;
+    }
+
+    titleWrap.append(colorBtn, titleDiv);
 
     const headerActions = document.createElement("div");
     headerActions.style.display = "flex";
@@ -144,10 +296,12 @@ export function render(): void {
     addCmd.textContent = "＋";
 
     headerActions.append(addCmd);
-    header.append(titleDiv, headerActions);
+    header.append(titleWrap, headerActions);
 
     const body = document.createElement("div");
     body.className = "card-body";
+
+    // Body drag handlers are unused with custom pointer-based drag
 
     if (!block.cmds.length) {
       const empty = document.createElement("div");
@@ -161,6 +315,7 @@ export function render(): void {
         row.dataset.blockId = block.id;
         row.dataset.cmdId = cmd.id;
         row.dataset.role = "command";
+        row.draggable = true;
 
         const icon = document.createElement("small");
         icon.textContent = "⎘";
@@ -177,6 +332,39 @@ export function render(): void {
           noteDiv.textContent = cmd.note;
           row.appendChild(noteDiv);
         }
+
+        row.addEventListener("pointerdown", (event) => {
+          if (event.button !== 0) return;
+          const bodyEl = row.closest<HTMLElement>(".card-body");
+          if (!bodyEl) return;
+          event.preventDefault();
+          draggingCommand = { blockId: block.id, cmdId: cmd.id };
+          dragContext = {
+            blockId: block.id,
+            cmdId: cmd.id,
+            body: bodyEl,
+            sourceRow: row,
+            targetCmdId: null,
+            position: "after",
+          };
+          card.draggable = false;
+          row.classList.add("dragging");
+
+          const handlePointerUp = (e: PointerEvent) => {
+            const ctx = dragContext;
+            if (ctx && ctx.targetCmdId && ctx.targetCmdId !== ctx.cmdId) {
+              reorderCommandsWithinBlock(ctx.blockId, ctx.cmdId, ctx.targetCmdId, ctx.position);
+            }
+            row.classList.remove("dragging");
+            insertLine.style.display = "none";
+            card.draggable = true;
+            resetDragContext();
+            e.stopPropagation();
+          };
+
+          document.addEventListener("pointermove", handleCommandPointerMove);
+          document.addEventListener("pointerup", handlePointerUp, { once: true });
+        });
 
         body.appendChild(row);
       }
