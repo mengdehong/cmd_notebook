@@ -37,6 +37,10 @@ let confirmListener: ((event: MouseEvent) => void) | null = null;
 let cancelListener: ((event: Event) => void) | null = null;
 let backdropListener: ((event: Event) => void) | null = null;
 
+export function isDialogOpen(): boolean {
+  return isOpen;
+}
+
 function removeListeners(): void {
   if (confirmListener && confirmBtn) {
     confirmBtn.removeEventListener("click", confirmListener);

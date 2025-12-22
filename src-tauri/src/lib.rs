@@ -5,7 +5,10 @@ use std::fs;
 use std::io::ErrorKind;
 use std::path::PathBuf;
 
+use tauri::menu::{MenuBuilder, MenuItemBuilder};
+use tauri::tray::{TrayIcon, TrayIconBuilder, TrayIconEvent};
 use tauri::AppHandle;
+use tauri::Manager;
 
 use backup::{backup_file, copy_data_to_new_dir, create_backup_if_changed};
 use config::{
@@ -148,6 +151,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
             save_state,
             load_state,
@@ -156,6 +160,41 @@ pub fn run() {
             switch_data_dir,
             reset_data_dir
         ])
+        .setup(|app| {
+            let show = MenuItemBuilder::with_id("show", "显示窗口").build(app)?;
+            let quit = MenuItemBuilder::with_id("quit", "退出").build(app)?;
+            let menu = MenuBuilder::new(app).items(&[&show, &quit]).build()?;
+
+            let mut tray = TrayIconBuilder::new();
+            if let Some(icon) = app.default_window_icon() {
+                tray = tray.icon(icon.clone());
+            }
+
+            tray.menu(&menu)
+                .on_menu_event(|app, event| match event.id.as_ref() {
+                    "show" => {
+                        if let Some(win) = app.app_handle().get_webview_window("main") {
+                            let _ = win.unminimize();
+                            let _ = win.show();
+                            let _ = win.set_focus();
+                        }
+                    }
+                    "quit" => app.app_handle().exit(0),
+                    _ => {}
+                })
+                .on_tray_icon_event(|tray: &TrayIcon, event| {
+                    if let TrayIconEvent::Click { .. } = event {
+                        if let Some(win) = tray.app_handle().get_webview_window("main") {
+                            let _ = win.unminimize();
+                            let _ = win.show();
+                            let _ = win.set_focus();
+                        }
+                    }
+                })
+                .build(app)?;
+
+            Ok(())
+        })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

@@ -9,6 +9,8 @@ export interface CommandBlock {
   title: string;
   cmds: CommandItem[];
   width?: number;
+  height?: number;
+  titleColor?: string;
 }
 
 export interface CommandPage {
@@ -87,6 +89,8 @@ function sanitizeBlocks(input: unknown): CommandBlock[] {
     const id = coerceString(record.id, uid()) || uid();
     const title = coerceString(record.title, "");
     const width = typeof record.width === "number" ? record.width : undefined;
+    const height = typeof record.height === "number" ? record.height : undefined;
+    const titleColor = typeof record.titleColor === "string" ? record.titleColor : undefined;
     const cmdsInput = Array.isArray(record.cmds) ? record.cmds : [];
     const cmds: CommandItem[] = [];
     for (const cmdRaw of cmdsInput) {
@@ -97,7 +101,7 @@ function sanitizeBlocks(input: unknown): CommandBlock[] {
       const note = typeof cmdRecord.note === "string" ? cmdRecord.note : undefined;
       cmds.push({ id: cmdId, text, note });
     }
-    blocks.push({ id, title, cmds, width });
+    blocks.push({ id, title, cmds, width, height, titleColor });
   }
   return blocks;
 }
